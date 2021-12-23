@@ -1,5 +1,4 @@
 # callseq
-CallSeq is a functions calling sequence recording tool.
 
 CallSeq is a tool that allows recording the calling sequence of
 function or method calls while running an application.
