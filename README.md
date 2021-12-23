@@ -1,20 +1,41 @@
 # callseq
-CallSeq is a function/method calling sequence recording tool
+CallSeq is a functions calling sequence recording tool.
 
 CallSeq is a tool that allows recording the calling sequence of
-functions or method calls during an application runtime. The basic
-workflow of using CallSeq is as follows:
+function or method calls while running an application.
+
+## Motivation
+
+Imagine joining a project that develops/maintains a C++ based software
+that code base has a size of couple of thousands or more files where
+many of these can have ten thousand or more lines of C++ code and your
+task is to extend the software with a new feature or fix some nasty
+threading bugs.  Getting acquinted with such huge code bases is
+clearly a daunting undertaking. Sometimes reading the code helps to
+resolve the problems while othertimes it will be insufficient or
+impractical. As a follow-up, running the code to follow the actual
+execution path can be helpful for getting acquinted with the internals
+of the software. In fact, this may also give hints what parts of the
+code one should pay attention the most to complete the given task.
+
+The CallSeq project provides tools that allow recording a calling
+sequence of functions (including class methods) while running an
+application. CallSeq implements the following workflow for debugging
+applications:
 
 1. Apply CallSeq hooks to the application sources.
 2. Compile and build the application.
-3. Running the application will record the function and method calls
-   to CallSeq output file.
-4. Analyze CallSeq output file and develop the application. Go to step
-   2.
-5. Unapply CallSeq hooks to the application sources.
+3. Running the application will record the function and method and saves this
+   information to a CallSeq output file.
+4. Analyze CallSeq output file.
+5. Develop the application and go back to step 2.
+5. Remove CallSeq hooks from the application sources.
 
-Currently, CallSeq can be applied to C++ based software that uses
-C++-17 or newer standard.
+Currently, CallSeq can be applied to C++ based software using C++-17
+or newer standard.
+
+CallSeq should be considered as a complimentary tool to the existing
+set of debugging and program analysis tools.
 
 ## Example
 
@@ -26,7 +47,7 @@ To apply CallSeq to C++ sources, a command line tool `callseq++` is
 provided. Execute
 
 ```bash
-callseq++ callseq/cxx/src --apply --show-diff
+$ callseq++ callseq/cxx/src --apply --show-diff
 ```
 
 that will insert CallSeq hooks into C++ files under
@@ -77,18 +98,19 @@ ndiff:
 Next, let's build the test application:
 
 ```bash
-g++ -std=c++17 callseq/cxx/src/test.cpp -o ./app -include callseq/cxx/include/callseq.hpp
+$ g++ -std=c++17 callseq/cxx/src/test.cpp -o ./app -include callseq/cxx/include/callseq.hpp
 ```
 
-where using the `-include callseq/cxx/include/callseq.hpp` is required for
-compiling C++ with CallSeq applied. Another way to specify this globally is to execute:
+where using the `-include callseq/cxx/include/callseq.hpp` is required
+for compiling C++ sources that contain CallSeq hooks. Another way to
+achieve the inclusion of `callseq.hpp` header file is to execute:
 
 ```bash
 export CXXFLAGS="$CXXFLAGS -include callseq/cxx/include/callseq.hpp"
 ```
-prior configuring the application build.
+prior configuring the build of the application.
 
-The console output from running the application is:
+The console output from running the given test application is:
 
 ```
 $ ./app
@@ -96,8 +118,7 @@ callseq logs to callseq.output
 foo(12) + foo(23) -> 1392
 ```
 
-In addition, running the application produces the CallSeq output
-stored in file `callseq.output` that has the following content:
+Notice that a file `callseq.output` is created that contains:
 
 ```
 {7|0x0|0.134384|0xe48eb7|int main()|callseq/cxx/src/test.cpp#40
@@ -116,32 +137,37 @@ stored in file `callseq.output` that has the following content:
 }7|0x0|0.359593|0xe48eb7
 ```
 
-where each line represents an event of either entering a
-function/method (lines starting with `{`) or leaving the
+Each line in the CallSeq output file represents an event of either
+entering a function/method (lines starting with `{`) or leaving the
 function/method (lines starting with `}`). The other fields in a
 single line have the following meanings:
 
 1. An event id that corresponds to the code location of entering the
-   function/method
+   function/method. This is specified as the first argument to the
+   CPP-macro `CALLSEQ_SIGNAL`.
 
-2. The pointer value of `this` if inside a method, otherwise, `0x0`
-   value corresponds to free functions of static methods
+2. The pointer value of `this` if inside a class method. The value
+   `0x0` indicates that the event line corresponds to a free functions
+   or a static method of a class.
 
 3. Timestamp of the event in seconds given in nano-seconds resolution.
 
-4. The (shortened) hash id of the thread where the function/method is being executed.
+4. The hash id of the thread under which the function/method is being
+   executed.
 
-5. The signature of the function/method
+5. The signature of the function/method. Specified only for function
+   entering events.
 
-6. The file name and line number of the function/method entering
-   point.
+6. The file name and line number of the function/method where the
+   events is being triggered. Specified only for function entering
+   events.
 
 In future, analyzis tools will be provied for interpretting and
 visualizing the content of CallSeq output files.
 
 One may change the application source codes for development as long as
-the CallSeq hooks (the CPP macro `CALLSEQ_SIGNAL` calls) are not
-altered, although, one may always remove some these manually if
+the CallSeq hooks (the CPP-macro `CALLSEQ_SIGNAL` calls) are not
+altered. Although, one may always remove some of these manually if
 wished.
 
 Finally, to remove all the CallSeq hooks from the application source
@@ -150,3 +176,6 @@ codes, run:
 ```bash
 callseq++ callseq/cxx/src --unapply
 ```
+
+that will restore the application source code to the original state
+(modulo the possible modifications from development).
