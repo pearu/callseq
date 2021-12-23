@@ -13,7 +13,8 @@ workflow of using CallSeq is as follows:
    2.
 5. Unapply CallSeq hooks to the application sources.
 
-Currently, CallSeq can be applied to C++ based software.
+Currently, CallSeq can be applied to C++ based software that uses
+C++-17 or newer standard.
 
 ## Example
 
