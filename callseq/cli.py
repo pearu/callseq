@@ -28,19 +28,26 @@ def main_cxx():
 
     args = parser.parse_args()
 
-    sources = callseq.actions.Collector(recursive=args.recursive, std=std)(args.path)
+    if args.apply or args.unapply:
+        sources = callseq.actions.Collector(recursive=args.recursive, std=std)(args.path)
 
-    source_root = args.source_root if args.source_root else os.path.commonprefix(sources)
-    if os.path.isfile(source_root):
-        source_root = os.path.dirname(source_root)
-    print(f'{source_root=}')
+        source_root = args.source_root if args.source_root else os.path.commonprefix(sources)
+        if os.path.isfile(source_root):
+            source_root = os.path.dirname(source_root)
+        print(f'{source_root=}')
 
-    print(f'Found {len(sources)} C++ header/source files in {":".join(args.path)}')
+        print(f'Found {len(sources)} C++ header/source files in {":".join(args.path)}')
 
-    if args.apply:
-        sources = callseq.actions.MultiCallSeq(
-            std=std, task='apply', try_run=args.try_run, show_diff=args.show_diff)(sources)
+        if args.apply:
+            sources = callseq.actions.MultiCallSeq(
+                std=std, task='apply', try_run=args.try_run, show_diff=args.show_diff)(sources)
 
-    if args.unapply:
-        sources = callseq.actions.MultiCallSeq(
-            std=std, task='unapply', try_run=args.try_run, show_diff=args.show_diff)(sources)
+        if args.unapply:
+            sources = callseq.actions.MultiCallSeq(
+                std=std, task='unapply', try_run=args.try_run, show_diff=args.show_diff)(sources)
+    else:
+        for path in args.path:
+            if os.path.basename(path) == 'callseq.output':
+                f = open(path)
+                callseq.actions.ShowCallSeqOutput()(f.read())
+                f.close()

@@ -1,9 +1,9 @@
 import os
 import shutil
 import tempfile
-import difflib
 import filecmp
 import callseq
+
 
 def get_root_path():
     return os.path.dirname(os.path.dirname(__file__))
@@ -44,7 +44,6 @@ def test_cxx_callseq_apply_unapply():
         result = open(restored_src).read()
         expected = open(src).read()
 
-        #print(''.join(difflib.ndiff(expected.splitlines(keepends=True), result.splitlines(keepends=True))))
         assert len(expected) == len(result)
         assert expected == result
 
@@ -87,7 +86,8 @@ def test_cxx_callseq_apply_build():
         app_exe = os.path.join(working_dir, 'app')
         callseq_output = os.path.join(working_dir, "callseq.output")
         s, out, err = compiler(modified_src, app_exe,
-                               flags = ['-include', callseq_hpp, f'-DCALLSEQ_OUTPUT="{callseq_output}"'],
+                               flags=['-include', callseq_hpp,
+                                      f'-DCALLSEQ_OUTPUT="{callseq_output}"'],
                                task='build')
         assert s == 0
         app = callseq.actions.Application(app_exe)
@@ -98,6 +98,7 @@ def test_cxx_callseq_apply_build():
         f = open(callseq_output)
         print(f.read())
         f.close()
+
 
 def test_cxx_ast_dump():
     test_src = os.path.join(get_root_path(), 'cxx', 'src', 'test.cpp')
@@ -129,7 +130,45 @@ def test_cxx_multi_callseq_apply_unapply():
             for f1, f2 in zip(modified_sources, copy_sources):
                 equal = equal and filecmp.cmp(f1, f2)
             assert not equal
-            restored_sources = callseq.actions.MultiCallSeq(std=std, task='unapply')(modified_sources)
+            restored_sources = callseq.actions.MultiCallSeq(std=std,
+                                                            task='unapply')(modified_sources)
             assert len(restored_sources) == len(copy_sources)
             for f1, f2 in zip(restored_sources, copy_sources):
                 assert filecmp.cmp(f1, f2)
+
+
+def test_cxx_factorial():
+    std = 'C++'
+    test_src = os.path.join(get_root_path(), 'cxx', 'src', 'factorial.cpp')
+    callseq_hpp = os.path.join(get_root_path(), 'cxx', 'include', 'callseq.hpp')
+
+    with tempfile.TemporaryDirectory() as working_dir:
+        src = os.path.join(working_dir, os.path.basename(test_src))
+        modified_src = os.path.join(working_dir, '_' + os.path.basename(test_src))
+
+        shutil.copy(test_src, src)
+
+        callseq.actions.CallSeq(std=std, task='apply')(src, modified_src)
+
+        compiler = callseq.actions.Compiler.get('c++17')
+        app_exe = os.path.join(working_dir, 'app')
+        callseq_output = os.path.join(working_dir, "callseq.output")
+        s, out, err = compiler(modified_src, app_exe,
+                               flags=['-include', callseq_hpp,
+                                      f'-DCALLSEQ_OUTPUT="{callseq_output}"'],
+                               task='build')
+        assert s == 0
+        app = callseq.actions.Application(app_exe)
+        s, out, err = app()
+        assert s == 0
+        import math
+        for n, line in enumerate(out.strip().splitlines()):
+            if n == 0:
+                assert line.startswith('callseq logs to'), line
+            else:
+                assert line == f'{n}! is {math.factorial(n)}'
+
+        print()
+        f = open(callseq_output)
+        callseq.actions.ShowCallSeqOutput()(f.read())
+        f.close()

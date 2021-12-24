@@ -8,6 +8,7 @@ import difflib
 import callseq.cxx
 import callseq.cxx.clang_ast_dump
 
+
 def _flatten(args):
     for a in args:
         if isinstance(a, str):
@@ -282,3 +283,19 @@ class Collector(Action):
 
     def __call__(self, *paths):
         return list(sorted(set(self.collect(paths))))
+
+
+class ShowCallSeqOutput(Action):
+
+    def __call__(self, callseq_output):
+
+        tabs = 0
+        for line in callseq_output.splitlines():
+            if line[0] == '{':
+                print('  ' * tabs + line)
+                tabs += 1
+            elif line[0] == '}':
+                tabs -= 1
+                print('  ' * tabs + line)
+            else:
+                assert 0
