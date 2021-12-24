@@ -5,30 +5,31 @@ function or method calls while running an application.
 
 ## Motivation
 
-Imagine joining a project that develops/maintains a C++ based software
-that code base has a size of couple of thousands or more files where
-many of these can have ten thousand or more lines of C++ code and your
-task is to extend the software with a new feature or fix some nasty
-threading bugs.  Getting acquinted with such huge code bases is
-clearly a daunting undertaking. Sometimes reading the code helps to
-resolve the problems while othertimes it will be insufficient or
-impractical. As a follow-up, running the code to follow the actual
-execution path can be helpful for getting acquinted with the internals
-of the software. In fact, this may also give hints what parts of the
-code one should pay attention the most to complete the given task.
+Imagine joining a project that develops and maintains a C++ based
+software with couple of thousands or more files while many of these
+can have tens of thousands lines of C++ code. And your task is to
+extend the software with a new feature or fix a bug.  Getting
+acquinted with such huge code base to resolve your problem can be a
+daunting undertaking. Sometimes reading the source code is sufficient
+to resolve the problem while othertimes not. As a next step, running
+the code and following actual execution paths is helpful for learning
+the internals of the software. In fact, this may also give hints what
+parts of the code one should pay attention the most to complete the
+given programming task.
 
-The CallSeq project provides tools that allow recording a calling
+The CallSeq project provides a tool that allows recording a calling
 sequence of functions (including class methods) while running an
 application. CallSeq implements the following workflow for debugging
-applications:
+the application:
 
 1. Apply CallSeq hooks to the application sources.
-2. Compile and build the application.
-3. Running the application will record the function and method and saves this
-   information to a CallSeq output file.
-4. Analyze CallSeq output file.
+2. Compile and build the application as usual.
+3. Run the application. The CallSeq hooks will record the function and
+   method calls to a CallSeq output file.
+4. Analyze the CallSeq output file.
 5. Develop the application and go back to step 2.
-5. Remove CallSeq hooks from the application sources.
+6. Remove CallSeq hooks from the application sources and push your
+   changes to the application repository as usual.
 
 Currently, CallSeq can be applied to C++ based software using C++-17
 or newer standard.
@@ -38,9 +39,9 @@ set of debugging and program analysis tools.
 
 ## Example
 
-Consider a test file [test.cpp](callseq/cxx/src/test.cpp) than
-illustrates various C++ functions, including free functions and class
-methods and its static methods.
+Consider a test file [test.cpp](callseq/cxx/src/test.cpp) that
+illustrates calling various C++ functions, including free functions,
+class methods and its static methods.
 
 To apply CallSeq to C++ sources, a command line tool `callseq++` is
 provided. Execute
@@ -49,9 +50,10 @@ provided. Execute
 $ callseq++ callseq/cxx/src --apply --show-diff
 ```
 
-that will insert CallSeq hooks into C++ files under
-`callseq/cxx/src`. With the option `--show-diff`, the changes to
-source files will be shown:
+that will insert CallSeq hooks into all C++ files under
+`callseq/cxx/src` (in the given example there is just one C++ source
+file). With the option `--show-diff`, the changes to source files will
+be shown as follows:
 
 ```
 Found 1 C++ header/source files in callseq/cxx/src
@@ -94,7 +96,7 @@ ndiff:
 ============================================================
 ```
 
-Next, let's build the test application:
+Next, let's build the test application (assuming GNU compilers):
 
 ```bash
 $ g++ -std=c++17 callseq/cxx/src/test.cpp -o ./app -include callseq/cxx/include/callseq.hpp
@@ -109,7 +111,7 @@ export CXXFLAGS="$CXXFLAGS -include callseq/cxx/include/callseq.hpp"
 ```
 prior configuring the build of the application.
 
-The console output from running the given test application is:
+The standard output from running the given test application is:
 
 ```
 $ ./app
@@ -117,7 +119,8 @@ callseq logs to callseq.output
 foo(12) + foo(23) -> 1392
 ```
 
-Notice that a file `callseq.output` is created that contains:
+Notice that a file `callseq.output` is created to current working
+directory that contains:
 
 ```
 {7|0x0|0.134384|0xe48eb7|int main()|callseq/cxx/src/test.cpp#40
@@ -142,14 +145,15 @@ function/method (lines starting with `}`). The other fields in a
 single line have the following meanings:
 
 1. An event id that corresponds to the code location of entering the
-   function/method. This is specified as the first argument to the
-   CPP-macro `CALLSEQ_SIGNAL`.
+   function/method. The event id is the value specified as the first
+   argument to the CPP-macro `CALLSEQ_SIGNAL`.
 
 2. The pointer value of `this` if inside a class method. The value
-   `0x0` indicates that the event line corresponds to a free functions
-   or a static method of a class.
+   `0x0` indicates that the event line corresponds to a free function
+   or a static method call.
 
-3. Timestamp of the event in seconds given in nano-seconds resolution.
+3. Timestamp of the event in seconds given with nano-seconds
+   resolution.
 
 4. The hash id of the thread under which the function/method is being
    executed.
@@ -164,10 +168,10 @@ single line have the following meanings:
 In future, analyzis tools will be provied for interpretting and
 visualizing the content of CallSeq output files.
 
-One may change the application source codes for development as long as
-the CallSeq hooks (the CPP-macro `CALLSEQ_SIGNAL` calls) are not
-altered. Although, one may always remove some of these manually if
-wished.
+One may change the application source codes according to normal
+development workflow as long as the CallSeq hooks (the CPP-macro
+`CALLSEQ_SIGNAL` calls) are not altered. Although, one may always
+remove some of these manually if wished.
 
 Finally, to remove all the CallSeq hooks from the application source
 codes, run:
@@ -177,4 +181,5 @@ callseq++ callseq/cxx/src --unapply
 ```
 
 that will restore the application source code to the original state
-(modulo the possible modifications from development).
+(modulo the possible modifications introduced from software
+development steps).
