@@ -42,9 +42,23 @@ set of debugging and program analysis tools.
 
 ## Example
 
-Consider a test file [factorial.cpp](callseq/cxx/src/factorial.cpp) that
-illustrates calling various C++ functions, including free functions,
-class methods and its static methods.
+Consider a test file [factorial.cpp](callseq/cxx/src/factorial.cpp):
+```c++
+// File: factorial.cpp
+#include <iostream>
+
+long factorial(long n) {
+  if (n <= 1)
+    return 1;
+  return n * factorial(n - 1);
+}
+
+int main() {
+  for (int n = 1; n < 5; n++) {
+    std::cout << n << "! is " << factorial(n) << std::endl;
+  }
+}
+```
 
 To apply CallSeq to C++ sources, a command line tool `callseq++` is
 provided. Execute
@@ -84,7 +98,9 @@ $ g++ -std=c++17 callseq/cxx/src/factorial.cpp -o ./app-factorial -include calls
 
 where using the `-include callseq/cxx/include/callseq.hpp` is required
 for compiling C++ sources that contain CallSeq hooks. Another way to
-achieve the inclusion of `callseq.hpp` header file is to execute:
+achieve the inclusion of
+[callseq.hpp](callseq/cxx/include/callseq.hpp) header file is to
+execute:
 
 ```bash
 export CXXFLAGS="$CXXFLAGS -include callseq/cxx/include/callseq.hpp"
