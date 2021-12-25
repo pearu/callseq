@@ -44,13 +44,13 @@ namespace callseq {
 struct ThisPlaceholder {};
 
 // nanos() returns now in nanoseconds
-uint64_t nanos() {
+inline uint64_t nanos() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
       .count();
 }
 
-uint64_t thread_id() {
+inline uint64_t thread_id() {
   return std::hash<std::thread::id>()(std::this_thread::get_id()) & 0xffffff;
 }
 

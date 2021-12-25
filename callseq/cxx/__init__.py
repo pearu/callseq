@@ -17,43 +17,34 @@ class Counter:
 NEXT_COUNTER = Counter().next
 
 
-def insert_signal_code(ast, source):
+def insert_signal_code(ast, source, source_string):
     """Insert callseq signal points to a C++ source.
 
     Signal point is a RAII object that emits a signal when entering a
     C++ function/method and when leaving the function/method.
-
-    A signal consist of static and dynamic data. The static data consists of
-      - the name of source file
-      - the line number of the function/method name
-      - the function/method name
-
-    The dynamic data consists of
-      - thread id
-      - timestamp
-      - the value of (void*)this in case of a method
-      - calling tree depth
     """
-
     def select(node):
         if node.key not in ['CXXConstructorDecl', 'CXXMethodDecl', 'FunctionDecl']:
             return False
         for n in node.nodes:
             if n.key == 'CompoundStmt':  # function/method has body
-                return True
+                return node.loc == source
         return False
 
-    lines = list(source.splitlines(keepends=True))
+    lines = list(source_string.splitlines(keepends=True))
     for node in ast.traverse(select):
         has_this = ((node.key == 'CXXConstructorDecl')
                     or (node.key == 'CXXMethodDecl'
                         and 'static' not in node.value.rsplit("'", 1)[-1]))
         lineno, colno = node.lineno-1, node.colno-1
         name = node.value.split(None, 1)[0]
+        if '<' in name:
+            name = name[:name.index('<')]
         # sanity check: ast reference must be exact:
         assert lines[lineno][colno:].startswith(name), (lines[lineno], name)
         bracket_lineno = lineno
         while '{' not in lines[bracket_lineno]:
+            assert ';' in lines[bracket_lineno]
             bracket_lineno += 1
         bracket_colno = lines[bracket_lineno].index('{')
         line = lines[bracket_lineno]

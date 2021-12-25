@@ -17,9 +17,9 @@ def _flatten(args):
             yield from _flatten(a)
 
 
-def run(cmd, *args):
+def run(cmd, *args, **kwargs):
     new_args = [cmd] + list(_flatten(args))
-    r = subprocess.run(new_args, capture_output=True)
+    r = subprocess.run(new_args, capture_output=True, **kwargs)
     return -r.returncode, r.stdout.decode("utf-8"), r.stderr.decode("utf-8")
 
 
@@ -145,8 +145,8 @@ class Application(Action):
     def __init__(self, application_exe):
         self.application_exe = application_exe
 
-    def __call__(self, *args):
-        s, out, err = run(self.application_exe, list(args))
+    def __call__(self, *args, **kwargs):
+        s, out, err = run(self.application_exe, list(args), **kwargs)
         if s == 0:
             return s, out, err
         raise RuntimeError(f'application failed:\n{out}\n{err}')
@@ -161,6 +161,7 @@ class CallSeq(Action):
             self.ast_reader = ClangAstReader()
             self.apply_method = callseq.cxx.insert_signal_code
             self.unapply_method = callseq.cxx.remove_signal_code
+            self.ast_cache = {}
         else:
             raise NotImplementedError(repr(self.std))
 
@@ -168,13 +169,43 @@ class CallSeq(Action):
         self.try_run = try_run
         self.show_diff = show_diff
 
+    def update_ast_cache(self, ast):
+        pass
+
+    def get_ast(self, source):
+        # Warning: Here we assume that a source file does not define
+        # CPP-macros that will affect the result of ast-parsing the
+        # header files that the source file includes. Otherwise, we
+        # should not cache the ast of a header file obtained from the
+        # ast of a source file.
+        if source not in self.ast_cache:
+            ast = self.ast_reader(source)
+            sources = set()
+
+            def process(node):
+                sources.add(node.loc)
+                return True
+
+            list(ast.traverse(process))
+            for source_ in sources:
+                def process(node):
+                    if node.key == 'TranslationUnitDecl':
+                        return True
+                    if node.loc == source_:
+                        return True
+                new_ast = ast.filter(process)
+                if new_ast is not None:
+                    new_ast.loc = source_
+                    self.ast_cache[source_] = new_ast
+        return self.ast_cache[source]
+
     def __call__(self, source, output=None):
         f = open(source)
         source_string = f.read()
         f.close()
         if self.task == 'apply':
-            ast = self.ast_reader(source)
-            output_string = self.apply_method(ast, source_string)
+            ast = self.get_ast(source)
+            output_string = self.apply_method(ast, source, source_string)
         elif self.task == 'unapply':
             output_string = self.unapply_method(source_string)
         else:
@@ -256,14 +287,15 @@ class Collector(Action):
     """Collects files with the given file standard
     """
 
-    std_extensions = {'c++': ['.h', '.hpp', '.hxx', '.c', '.cpp', '.cxx'],
-                      'c': ['.h', '.c']}
+    std_extensions = {'c++': dict(header=['.h', '.hpp', '.hxx'], source=['.c', '.cpp', '.cxx']),
+                      'c': dict(header=['.h'], source=['.c'])}
 
     def __init__(self, recursive=False, std='C++'):
         self.recursive = recursive
         std = std.lower()
         std = dict(cxx='c++').get(std, std)
-        self.extensions = self.std_extensions[std]
+        self.header_extensions = self.std_extensions[std]['header']
+        self.source_extensions = self.std_extensions[std]['source']
 
     def collect(self, path, recursive=None):
         if isinstance(path, str):
@@ -273,8 +305,10 @@ class Collector(Action):
             else:
                 if os.path.isfile(path):
                     ext = os.path.splitext(path)[1].lower()
-                    if ext in self.extensions:
-                        yield path
+                    if ext in self.header_extensions:
+                        yield 1, path
+                    elif ext in self.source_extensions:
+                        yield 0, path
         elif isinstance(path, (list, tuple, set)):
             for path_ in path:
                 yield from self.collect(path_, recursive=recursive)
@@ -282,7 +316,7 @@ class Collector(Action):
             raise TypeError(f'expected str or list as a path argument, got {type(path)}')
 
     def __call__(self, *paths):
-        return list(sorted(set(self.collect(paths))))
+        return list(s for _, s in sorted(set(self.collect(paths))))
 
 
 class ShowCallSeqOutput(Action):
@@ -299,3 +333,29 @@ class ShowCallSeqOutput(Action):
                 print('  ' * tabs + line)
             else:
                 assert 0
+
+
+class CMake(Action):
+
+    def __init__(self, project_dir, build_dir, **env):
+        self.project_dir = project_dir
+        self.build_dir = build_dir
+        os.makedirs(self.build_dir, exist_ok=True)
+        self.cmake_exe = shutil.which('cmake')
+        if not env:
+            env = None
+        self.env = env
+
+    def configure(self, *args):
+        s, out, err = run(self.cmake_exe, args, self.project_dir,
+                          cwd=self.build_dir, env=self.env)
+        if s == 0:
+            return s, out, err
+        raise RuntimeError(f'cmake configure failed:\n{out}\n{err}')
+
+    def build(self, *args):
+        s, out, err = run(self.cmake_exe, args, '--build', self.build_dir,
+                          cwd=self.build_dir, env=self.env)
+        if s == 0:
+            return s, out, err
+        raise RuntimeError(f'cmake configure failed:\n{out}\n{err}')

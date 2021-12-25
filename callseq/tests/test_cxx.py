@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import filecmp
 import callseq
+import pytest
 
 
 def get_root_path():
@@ -172,3 +173,52 @@ def test_cxx_factorial():
         f = open(callseq_output)
         callseq.actions.ShowCallSeqOutput()(f.read())
         f.close()
+
+
+@pytest.fixture(scope='module')
+def cmake():
+    project_home = os.path.join(get_root_path(), 'cxx', 'src')
+    with tempfile.TemporaryDirectory() as build_dir:
+        cmake = callseq.actions.CMake(project_home, build_dir)
+        cmake.configure()
+        cmake.build()
+        yield cmake
+
+
+def test_cxx_fraction(cmake):
+    test_fraction_exe = os.path.join(cmake.build_dir, 'Tests', 'test_Fraction')
+    s, out, err = callseq.actions.Application(test_fraction_exe)()
+    assert s == 0
+    assert out.strip().split('\n', 1)[0] == 'x=1/2'
+
+
+@pytest.fixture(scope='module')
+def callseq_cmake():
+    std = 'C++'
+    project_home = os.path.join(get_root_path(), 'cxx', 'src')
+    with tempfile.TemporaryDirectory() as working_dir:
+        shutil.copytree(project_home, working_dir, dirs_exist_ok=True)
+        build_dir = os.path.join(working_dir, 'build')
+        # apply callseq hooks
+        sources = callseq.actions.Collector(std=std, recursive=True)(working_dir)
+        modified_sources = callseq.actions.MultiCallSeq(std=std, task='apply')(sources)
+        assert len(modified_sources) == len(sources)
+        # build
+        env = os.environ.copy()
+        callseq_hpp = os.path.join(get_root_path(), 'cxx', 'include', 'callseq.hpp')
+        env['CXXFLAGS'] += f' -include {callseq_hpp}'
+        cmake = callseq.actions.CMake(working_dir, build_dir, **env)
+        cmake.configure()
+        cmake.build()
+        yield cmake
+
+
+def test_cxx_callseq_fraction(callseq_cmake):
+    test_fraction_exe = os.path.join(callseq_cmake.build_dir, 'Tests', 'test_Fraction')
+    s, out, err = callseq.actions.Application(test_fraction_exe)(cwd=callseq_cmake.build_dir)
+    assert s == 0
+    callseq_output = os.path.join(callseq_cmake.build_dir, "callseq.output")
+    print()
+    f = open(callseq_output)
+    callseq.actions.ShowCallSeqOutput()(f.read())
+    f.close()

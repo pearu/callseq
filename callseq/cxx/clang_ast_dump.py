@@ -22,7 +22,7 @@ def parse_line(line):
                 path = path[:-1]
             if ':' in path:
                 path, lineno, colno = path.split(':')
-                path = dict(path=path, lineno=lineno, colno=colno)
+                path = dict(path=path, lineno=int(lineno), colno=int(colno))
             else:
                 path = dict(path=path)
             lst.append(path)
@@ -177,6 +177,19 @@ class Node:
     def iter(self, key, reversed=False):
         return self.traverse(lambda node: node.key == key, reversed=reversed)
 
+    def filter(self, predicate):
+        if not predicate(self):
+            return None
+        nodes = []
+        for node in self.nodes:
+            node = node.filter(predicate)
+            if node is None:
+                continue
+            nodes.append(node)
+        obj = self.shallow_copy()
+        obj.nodes = nodes
+        return obj
+
     def cleanup(self):
         if self.key == 'NamespaceDecl':
             if self.value == 'std' or self.value.startswith('_'):
@@ -213,12 +226,17 @@ class Node:
         ):
             return
 
+        obj = self.shallow_copy()
+        obj.nodes = nodes
+        return obj
+
+    def shallow_copy(self):
         obj = object.__new__(Node)
         obj.parent = self.parent
         obj.key = self.key
         obj.value = self.value
         obj._value = self._value
-        obj.nodes = nodes
+        obj.nodes = self.nodes
         obj.loc = self.loc
         obj.lineno = self.lineno
         obj.colno = self.colno
