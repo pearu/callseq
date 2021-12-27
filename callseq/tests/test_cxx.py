@@ -201,7 +201,8 @@ def callseq_cmake():
         build_dir = os.path.join(working_dir, 'build')
         # apply callseq hooks
         sources = callseq.actions.Collector(std=std, recursive=True)(working_dir)
-        modified_sources = callseq.actions.MultiCallSeq(std=std, task='apply')(sources)
+        modified_sources = callseq.actions.MultiCallSeq(
+            std=std, task='apply', show_diff=True)(sources)
         assert len(modified_sources) == len(sources)
         # build
         env = os.environ.copy()

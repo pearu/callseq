@@ -154,11 +154,11 @@ class Application(Action):
 
 class CallSeq(Action):
 
-    def __init__(self, std='C++', task='apply', try_run=False, show_diff=False):
+    def __init__(self, std='C++', task='apply', try_run=False, show_diff=False, defines=None):
         self.std = std.lower()
 
         if self.std == 'c++':
-            self.ast_reader = ClangAstReader()
+            self.ast_reader = ClangAstReader(defines=defines)
             self.apply_method = callseq.cxx.insert_signal_code
             self.unapply_method = callseq.cxx.remove_signal_code
             self.ast_cache = {}
@@ -180,7 +180,7 @@ class CallSeq(Action):
         # ast of a source file.
         if source not in self.ast_cache:
             ast = self.ast_reader(source)
-            sources = set()
+            sources = set([source])
 
             def process(node):
                 sources.add(node.loc)
@@ -195,7 +195,7 @@ class CallSeq(Action):
                         return True
                 new_ast = ast.filter(process)
                 if new_ast is not None:
-                    new_ast.loc = source_
+                    # new_ast.loc = source_
                     self.ast_cache[source_] = new_ast
         return self.ast_cache[source]
 
@@ -205,7 +205,11 @@ class CallSeq(Action):
         f.close()
         if self.task == 'apply':
             ast = self.get_ast(source)
-            output_string = self.apply_method(ast, source, source_string)
+            try:
+                output_string = self.apply_method(ast, source, source_string)
+            except Exception:
+                print(f'While processing {source}:')
+                raise
         elif self.task == 'unapply':
             output_string = self.unapply_method(source_string)
         else:
@@ -261,8 +265,9 @@ def show_ndiff(file1, content1, file2, content2):
 
 class MultiCallSeq(Action):
 
-    def __init__(self, std='C++', task='apply', try_run=False, show_diff=False):
-        self.callseq = CallSeq(std=std, task=task, try_run=try_run, show_diff=show_diff)
+    def __init__(self, std='C++', task='apply', try_run=False, show_diff=False, defines=None):
+        self.callseq = CallSeq(std=std, task=task, try_run=try_run,
+                               show_diff=show_diff, defines=defines)
 
     def __call__(self, sources):
         return list(map(self.callseq, sources))
@@ -272,10 +277,14 @@ class ClangAstReader(Action):
     """AST reader of C++ files.
     """
 
-    def __init__(self):
+    def __init__(self, defines=None):
         self.clang_exe = shutil.which('clang++')
         assert self.clang_exe  # make sure that clang++ is installed (e.g. conda install clangxx)
         self.ast_dump_flags = ['-Xclang', '-ast-dump', '-fsyntax-only', '-fno-diagnostics-color']
+        if defines is not None:
+            assert isinstance(defines, list), defines
+            for d in defines:
+                self.ast_dump_flags.append(f'-D{d}')
 
     def __call__(self, source, flags=[]):
         source = os.path.abspath(source)
@@ -300,10 +309,12 @@ class Collector(Action):
     def collect(self, path, recursive=None):
         if isinstance(path, str):
             if os.path.isdir(path) and (recursive is None or recursive):
+                path = os.path.abspath(path)
                 for name in os.listdir(path):
                     yield from self.collect(os.path.join(path, name), recursive=self.recursive)
             else:
                 if os.path.isfile(path):
+                    path = os.path.abspath(path)
                     ext = os.path.splitext(path)[1].lower()
                     if ext in self.header_extensions:
                         yield 1, path

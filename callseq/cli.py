@@ -17,6 +17,9 @@ def main_cxx():
                         help='Insert callseq hooks to C++ files (default: %(default)s)')
     parser.add_argument('--unapply', default=False, action='store_true',
                         help='Remove callseq hooks from C++ files (default: %(default)s)')
+    parser.add_argument('-D', dest='defines',
+                        type=str, action='append',
+                        help='Extra CPP-macro defines for clang command (default: %(default)r)')
     parser.add_argument('--source-root', type=str, default='',
                         help='Root path of C++ sources (default: %(default)s)')
     parser.add_argument('--try-run', default=False, action='store_true',
@@ -27,7 +30,7 @@ def main_cxx():
                         help='Be verbose (default: %(default)s)')
 
     args = parser.parse_args()
-
+    print(args)
     if args.apply or args.unapply:
         sources = callseq.actions.Collector(recursive=args.recursive, std=std)(args.path)
 
@@ -40,7 +43,8 @@ def main_cxx():
 
         if args.apply:
             sources = callseq.actions.MultiCallSeq(
-                std=std, task='apply', try_run=args.try_run, show_diff=args.show_diff)(sources)
+                std=std, task='apply', try_run=args.try_run, show_diff=args.show_diff,
+                defines=args.defines)(sources)
 
         if args.unapply:
             sources = callseq.actions.MultiCallSeq(

@@ -1,73 +1,25 @@
-
-import re
 import os
 import sys
 
 
-def parse_line(line):
-    lst = []
-    if line.startswith('0x'):
-        id_, line = line.split(None, 1)  # strip hex value
-        lst.append(dict(id=id_))
-    while line:
-        if line.startswith('<'):
-            i1 = line.index('>', 0)
-            while line.count('<', 0, i1) > line.count('>', 0, i1+1):
-                i1 = line.index('>', i1 + 1)
-            lst.append(parse_line(line[1:i1]))
-            line = line[i1+1:].strip()
-        elif line.startswith('/'):
-            path, line = line.split(None, 1) if ' ' in line else (line, '')
-            if path.endswith(','):
-                path = path[:-1]
-            if ':' in path:
-                path, lineno, colno = path.split(':')
-                path = dict(path=path, lineno=int(lineno), colno=int(colno))
-            else:
-                path = dict(path=path)
-            lst.append(path)
-        elif line.startswith('line:') or line.startswith('col:'):
-            loc, line = line.split(None, 1) if ' ' in line else (line, '')
-            if loc.endswith(','):
-                loc = loc[:-1]
-            items = loc.split(':')
-            kind, nums = items[0], tuple(map(int, items[1:]))
-            if kind == 'line':
-                assert len(nums) == 2, nums
-                lst.append(dict(lineno=nums[0], colno=nums[1]))
-            elif kind == 'col':
-                assert len(nums) == 1, nums
-                lst.append(dict(colno=nums[0]))
-            else:
-                assert 0
-        else:
-            if line.split(None, 1)[0] in ['parent', 'prev'] and ' ' in line:
-                kind, hnum, line = line.split(None, 2)
-                lst.append({kind: hnum})
-                continue
-            lst.append(line)
-            line = ''
-    return lst
+class Location:
 
+    def __init__(self, path, line, col):
+        assert isinstance(path, str)
+        assert isinstance(line, int)
+        assert isinstance(col, int)
+        self.path = path
+        self.line = line
+        self.col = col
 
-def get_location(items):
-    path, line, col = None, None, None
-    for item in reversed(items):
-        if isinstance(item, dict):
-            path_ = item.get('path')
-            line_ = item.get('lineno')
-            col_ = item.get('colno')
-        elif isinstance(item, list):
-            path_, line_, col_ = get_location(item)
-        else:
-            continue
-        if path is None:
-            path = path_
-        if line is None:
-            line = line_
-        if col is None:
-            col = col_
-    return path, line, col
+    def __repr__(self):
+        return f'{type(self).__name__}({self.path!r}, {self.line}, {self.col})'
+
+    def copy(self):
+        return type(self)(self.path, self.line, self.col)
+
+    def update(self, **d):
+        self.__dict__.update(d)
 
 
 class Node:
@@ -77,83 +29,46 @@ class Node:
     All non-root nodes have parents.
     """
 
-    def __init__(self, parent, prefix, key, value):
+    def __init__(self, parent, prefix, key, value, span, location, prefices, suffices):
         assert isinstance(parent, (Node, type(None)))
         assert isinstance(key, str), key
         assert isinstance(value, str), value
+        assert isinstance(location, (type(None), Location))
         self.parent = parent
         self.prefix = prefix  # used only when parsing clang dump output
         self.key = key
         self._value = value   # original value, unused
-        items = parse_line(value)
-        loc, lineno, colno = get_location(items)
-        if loc is None:
-            if self.parent is not None:
-                if self.parent.nodes:
-                    loc = self.parent.nodes[-1].loc
-                else:
-                    loc = self.parent.loc
-                if lineno is None:
-                    if self.parent.nodes:
-                        lineno = self.parent.nodes[-1].lineno
-                    else:
-                        lineno = self.parent.lineno
-
-        self.loc = loc
-        self.lineno = lineno
-        self.colno = colno
-
-        if key == 'TranslationUnitDecl':
-            value = ''
-        elif key in ['NamespaceDecl', 'AccessSpecDecl', 'LinkageSpecDecl']:
-            # take last word
-            value = value.rsplit(None, 1)[-1]
-        elif key in ['TypedefDecl', 'CXXMethodDecl', 'CXXConstructorDecl', 'CXXDestructorDecl',
-                     'ParmVarDecl', 'TypeAliasDecl', 'EnumConstantDecl', 'FunctionDecl',
-                     'VarDecl', 'FieldDecl', 'IndirectFieldDecl', 'UnresolvedUsingValueDecl',
-                     ]:
-            # name 'signature' rest
-            # warning: pre-name part may be relevant as well
-            i = value.find("'")
-            j = value.rfind("'")
-            assert -1 not in {i, j}, (key, value)
-            name = value[:i].rstrip().rsplit(None, 1)[-1]
-            if key == 'ParmVarDecl' and ':' in name:
-                name = ''
-            sig = value[i:j+1]
-            rest = value[j+1:].lstrip()
-            value = f'{name} {sig} {rest}'
-        elif key == 'CXXRecordDecl':
-            m = re.match(r'.*\b(struct|class)\b\s+(.*)\s+definition', value)
-            if m is not None:
-                value = '%s %s' % m.groups()
-            else:
-                value = '...'
-        elif key in [
-                'UsingShadowDecl', 'CXXConversionDecl', 'NonTypeTemplateParmDecl',
-                'UsingDirectiveDecl', 'FriendDecl', 'EnumDecl', 'ClassTemplateDecl',
-                'TemplateTypeParmDecl', 'ClassTemplateSpecializationDecl', 'TypeAliasTemplateDecl',
-                'FunctionTemplateDecl', 'UsingDecl', 'ClassTemplatePartialSpecializationDecl',
-                'TemplateTemplateParmDecl', 'StaticAssertDecl', 'VarTemplateDecl', ''
-        ]:
-            # TODO: process only if needed
-            value = '...'
-        elif key.endswith('Decl'):
-            # reporting just for awareness
-            print(f'TODO1[{key}]: {value}')
-            assert "'" not in value
-        else:
-            pass
-            # print(f'TODO2[{key}]: {value}')
+        self.span = span
+        self.location = location
+        self.prefices = prefices
+        self.suffices = suffices
         self.value = value
         self.nodes = []
+
+    @property
+    def loc(self):
+        if self.location is None:
+            return None
+        return self.location.path
+
+    @property
+    def lineno(self):
+        return self.location.line
+
+    @property
+    def colno(self):
+        return self.location.col
 
     def __repr__(self):
         return f'{self.key}({self.value!r})'
 
     def tostring(self, tab='', filter=None):
         lines = []
-        lines.append(f'{tab}{self.key}:{self.value}  loc={self.loc}#{self.lineno}:{self.colno}')
+        if self.loc is not None:
+            lines.append(f'{tab}{self.key}:{self.value}'
+                         f'  loc={self.loc}#{self.lineno}:{self.colno}')
+        else:
+            lines.append(f'{tab}{self.key}:{self.value}')
         for node in self.nodes:
             if filter is None or filter(node):
                 lines.append(node.tostring(tab=tab + '  ',
@@ -237,16 +152,120 @@ class Node:
         obj.value = self.value
         obj._value = self._value
         obj.nodes = self.nodes
-        obj.loc = self.loc
-        obj.lineno = self.lineno
-        obj.colno = self.colno
+        obj.span = self.span
+        obj.location = self.location
+        obj.prefices = self.prefices
+        obj.suffices = self.suffices
         return obj
+
+
+def try_parse_ast_location(word, last_location):
+    if word == '<invalid sloc>':
+        return None
+    elif word.startswith('col:'):
+        _, col = word.split(':')
+        last_location.update(col=int(col))
+    elif word.startswith('line:'):
+        _, line, col = word.split(':')
+        last_location.update(line=int(line), col=int(col))
+    elif not word.startswith("'") and ':' in word:
+        loc, line, col = word.split(':')
+        if not (word.startswith('<built-in>') or word.startswith('<scratch space>')):
+            assert os.path.isfile(loc), (loc, word)
+        last_location.update(path=loc, line=int(line), col=int(col))
+    else:
+        return
+    return last_location.copy()
+
+
+def parse_ast_line(line, last_location):
+    d = {}
+    if line.startswith('original'):
+        k, line = line.split(None, 1)
+        d[k] = True
+    words = line.split(None, 2)
+    if len(words) == 3 and words[1].startswith('0x'):
+        key, addr, line = words
+        assert addr.startswith('0x'), (addr, line)
+        d.update(key=key, addr=int(addr, 16))
+    elif len(words) == 1:
+        line = ''
+        d.update(key=words[0])
+    else:
+        key, line = line.split(None, 1)
+        d.update(key=key)
+    if line.startswith('parent'):
+        k, a, line = line.split(None, 2)
+        assert a.startswith('0x'), (a, line)
+        d.update(parent=int(a, 16))
+    if line.startswith('prev'):
+        k, a, line = line.split(None, 2)
+        assert a.startswith('0x'), (a, line)
+        d.update(prev=int(a, 16))
+    if line.startswith('<'):
+        i = line.index('>')
+        while line[:i+1].count('<') != line[:i+1].count('>'):
+            i = line.index('>', i + 1)
+        span = line[1:i].split(', ')
+        line = line[i+1:].lstrip()
+        if len(span) == 1:
+            d.update(span_start=try_parse_ast_location(span[0], last_location))
+        elif len(span) == 2:
+            d.update(span_start=try_parse_ast_location(span[0], last_location),
+                     span_end=try_parse_ast_location(span[1], last_location))
+        else:
+            assert 0, (span, line)
+    if line.startswith('<invalid sloc>'):
+        d.update(location=None)
+        line = line[line.index('>')+1:].lstrip()
+    if line.startswith('<scratch space>') or line.startswith('<built-in>'):
+        word1, word2, line = line.split(None, 2)
+        word = word1 + ' ' + word2
+        location = try_parse_ast_location(word, last_location)
+        d.update(location=location)
+    if line and line[0] != '"' and not line.startswith('Text='):
+        words = line.split(None, 1)
+        if len(words) == 2:
+            word, rest = words
+            location = try_parse_ast_location(word, last_location)
+            if location is not None:
+                line = rest
+                d.update(location=location)
+        elif len(words) == 1:
+            location = try_parse_ast_location(words[0], last_location)
+            if location is not None:
+                line = ''
+                d.update(location=location)
+    prefices, suffices = [], []
+    known_prefices = ['implicit', 'used', 'referenced', 'constexpr', 'struct', 'class', 'invalid']
+    known_suffices = ['inline', 'default', 'static', 'trivial', 'definition']
+    while True:
+        for a in known_prefices:
+            if line.startswith(a + ' '):
+                prefices.append(a)
+                line = line[len(a):].lstrip()
+                break
+        else:
+            break
+    d.update(prefices=prefices)
+
+    while True:
+        for a in known_suffices:
+            if line.endswith(' ' + a):
+                suffices.append(a)
+                line = line[:-len(a)-1].rstrip()
+                break
+        else:
+            break
+    d.update(suffices=suffices)
+
+    d.update(rest=line)
+    return d
 
 
 def parse_ast_dump(ast_dump_output, loc=None):
     """Parse clang ast dump output into a Node tree.
     """
-
     if loc is not None:
         # ast_dump_output must have been obtained by using absolute
         # path of the input to clang++ command. Otherwise, parse_line
@@ -254,22 +273,28 @@ def parse_ast_dump(ast_dump_output, loc=None):
         # that loc is absolute path that may indicate if the
         # ast_dump_output constraint has been satisfied.
         assert os.path.isabs(loc), loc  # must use absolute paths
-    for line in ast_dump_output.splitlines():
+    lines = ast_dump_output.splitlines()
+    last_location = Location('', 0, 0)
+    for line in lines:
         prefix, rest = line.split('-', 1) if '-' in line else ('', line)
-        lst = rest.split(None, 1)
-        key, value = lst if len(lst) == 2 else (lst[0], '')
+        d = parse_ast_line(rest, last_location)
+        key = d['key']
+        value = d['rest']
         if not prefix:
-            root = current = Node(None, prefix, key, value)
-            root.loc = loc
+            span = Location(loc, 1, 1), Location(loc, len(lines), len(lines[-1]))
+            root = current = Node(None, prefix, key, value, span, span[0].copy(),
+                                  d['prefices'], d['suffices'])
         else:
-            if len(current.prefix) < len(prefix):
-                node = Node(current, prefix, key, value)
-                current.nodes.append(node)
-            else:
+            if len(current.prefix) >= len(prefix):
                 while len(current.prefix) > len(prefix):
                     current = current.parent
                 assert current.prefix[:-1] == prefix[:-1], (current.prefix, prefix)
-                node = Node(current.parent, prefix, key, value)
-                current.parent.nodes.append(node)
+                current = current.parent
+            span_start = d.get('span_start')
+            span_end = d.get('span_end', span_start)
+            span = (span_start, span_end)
+            location = d.get('location', span_start)
+            node = Node(current, prefix, key, value, span, location, d['prefices'], d['suffices'])
+            current.nodes.append(node)
             current = node
     return root.cleanup()

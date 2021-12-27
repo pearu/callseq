@@ -193,3 +193,18 @@ callseq++ callseq/cxx/src --unapply
 that will restore the application source code to the original state
 (modulo the possible modifications introduced from software
 development steps).
+
+
+## Limitations and hints
+
+1. If a function or method is defined inside a CPP-macro, the CallSeq
+   hooks cannot be applied automatically. In case one really wants to
+   incorporate the calls of these functions to the CallSeq output, the
+   CPP-macros must be updated manually with `CALLSEQ_SIGNAL` CPP-macro
+   calls while making sure that its first argument is unique integer
+   after the CPP-macro has been expanded.
+
+2. If a function or method is defined inside CPP `ifdef` (or similar)
+   block, one must enable these blocks by using proper define
+   arguments (see `-D` flag in `callseq++ --help`) to incorporate the
+   calls of these functions to the CallSeq output.

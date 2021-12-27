@@ -4,7 +4,7 @@
 template <typename T> class Fraction {
 
 public:
-  Fraction(T numel, T denom) : numel_(numel), denom_(denom) {}
+  Fraction(T numel, T denom) : numel_{numel}, denom_(denom) {}
   T numel() const { return numel_; }
   T denom() const { return denom_; }
 
